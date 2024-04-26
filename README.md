@@ -37,4 +37,5 @@ The output includes visualizations and tables generated during the analysis. The
 
 ## Note
 
-Ensure that the R environment is properly set up, and all required packages are installed before running the script. Additionally, review the dataset and adjust the script as needed based on specific data characteristics.   
+- Ensure that the R environment is properly set up, and all required packages are installed before running the script. Additionally, review the dataset and adjust the script as needed based on specific data characteristics.
+- The `Script.R` has the code for the project and `CO2Emissions.Rmd` has the Markdown file with a brief analysis.
