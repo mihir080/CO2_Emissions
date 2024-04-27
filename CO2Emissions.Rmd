@@ -1,0 +1,364 @@
+---
+title: "Impact Of Food Consumption On CO2 Emissions"
+author: "Mihir M"
+date: "`r Sys.Date()`"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, fig.align = 'center', warning = FALSE)
+```
+<br>
+
+### Overview
+<br>
+
+Food consumption plays a pivotal role in shaping our environmental footprint, particularly concerning carbon dioxide (CO2) emissions. The choices we make at the dinner table extend far beyond mere sustenance; they resonate deeply with our planet's health. With the global population soaring and dietary habits evolving, understanding the nexus between food consumption and CO2 emissions has become imperative. From the production and distribution of food to its preparation and eventual disposal, every aspect of the food cycle emits varying levels of CO2. 
+
+This script aims to analyze CO2 emissions from food consumption across different countries. It provides insights into the relationship between food consumption patterns and associated CO2 emissions, as well as comparisons between different food categories and countries.
+
+```{r, echo=FALSE, include=FALSE}
+# Checking and installing required packages
+packages <- c('readr', 'tidyverse', 'ggplot2', 'ggtext', 'tidytext', 'ggthemes', 'broom', 'knitr', 'plotly', 'sf', "rnaturalearthdata", 'rnaturalearth')
+#install all packages that are not already installed
+install.packages(setdiff(packages, rownames(installed.packages())))
+
+# Loading all packages as required
+
+for (pkg in packages){
+  library(pkg, character.only = TRUE)
+}
+
+
+# Setting the working directory and the working space options
+setwd("~/Documents/D Drive/Mihir Docs UMD/Python/CO2_Emissions")
+options(scipen = 999) # Using non scientific values for numbers
+
+#Loading the dataset - csv file 
+foodconsumption <- read_csv("Dataset_Foodconsumption.csv")
+```
+
+For the purpose of this small study, we will be seeing the relation between Consumption of Food and their CO2 Emissions. The Food Products have been divided into 11 broad categories, and we consider a further breakdown on the basis of the Country of consumption.
+
+A preview and summary of the dataset is as follows. 
+
+```{r, echo=FALSE}
+head(foodconsumption) # Verifying the read dataset
+
+# Basic and descriptive statistics 
+foodconsumption %>%
+  summary() # Checking the summary statsitics of the dataset
+  dim(foodconsumption) # Checking the dimensions of the dataset
+```
+
+The dataset has been cleaned and checked for 'na' values. There is no requirement of feature scaling at this stage. This is a brief analysis and will not focus on predictions or classifications.
+
+<br>
+
+### Inital Comparison
+
+<br>
+
+```{r, echo=FALSE, warning=FALSE}
+#Visualizing data to compare and to see descriptive stats
+#Using boxplots will allows us to compare the impact of consumption and 
+#emissions and see proportions
+foodconsumption %>% 
+  # Changing the dataset to a long format for plotting
+  gather(key = "feature", value = "value", -country, -food_category) %>% 
+  # Creating box plots
+  ggplot(aes(x = "", y = value, color = feature)) +
+  geom_boxplot() +
+  facet_wrap(~feature, scales = "fixed") +
+  scale_y_log10() + #using log for better comparison
+  theme(legend.position = "none") +
+  labs(x = NULL, # Remove X Axis labels
+       y = "Values (Log)",
+       title = "Distribution of CO2 and Consumption")
+
+#The box plots are fairly compareable but are not providing the best 
+#representation.
+```
+
+These box plots give us a brief idea of the distributions of the Food Consumption and CO2 Emissions. The plot shows that the distributions are not proportionate and that there is a higher level of emissions when compared to the consumptions. 
+
+We have used __log__ values for this plot. This allows us to get better comparability.
+
+Even though these box plots are fairly representative, let us add the actual datapoints to get better visibility of the density of the distribution.
+
+```{r}
+#Adding jitter points to see the spread and positoning of data points
+foodconsumption %>% 
+  # Changing the dataset to a long format for plotting
+  gather(key = "feature", value = "value", -country, -food_category) %>% 
+  ggplot(aes(x = "", y = value, color = feature)) + 
+  geom_boxplot() +
+  geom_jitter(alpha = .1) + # Adding
+  facet_wrap(~feature, scales = "fixed") + 
+  scale_y_log10() +
+  theme(legend.position = "none") +
+  labs(x = NULL, # Remove X Axis labels
+       y = "Values (Log)",
+       title = "Distribution of CO2 Emissions and Consumption")
+```
+
+<br>
+
+### Comparing Emission Per Unit Of Consumption
+
+<br>
+
+The dataset has two predefinied coloumns that show us the Consumption and CO2 Emissions. The data is on a per person per Kg basis. 
+
+<br>
+
+<div style="text-align:center"> 
+**Consumption = Kg of Food Ate by Each Person**
+</div>
+
+<br>
+
+<div style="text-align:center"> 
+**CO2 Emission = Kg of CO2 Produced by Each Person**
+</div>
+
+<br>
+
+Let us use this information to answer the question **"For every KG of Food that is consumed, how many KG's of CO2 is emitted?"**.
+
+<br>
+
+```{r}
+foodconsumption %>% 
+  filter(consumption != 0) %>%  # Removing the values where food consumption is 0
+  # Creating a new variable for emission per consumption 
+  mutate(emissionperfood = co2_emmission/consumption) %>%
+  group_by(food_category) %>% 
+  # Checking the average emission per kg consumption grouped by food category
+  summarise(avg_emission = mean(emissionperfood)) %>% 
+  ggplot(aes(x = reorder(food_category, avg_emission), y = avg_emission, fill = food_category)) +
+  geom_col() + #Adding bar charts
+  coord_flip() +
+  theme_hc() +
+  theme(legend.position = "none") +
+  labs(x = NULL, # Remove X Axis labels
+       y = "Emissions / Kg Consumption",
+       title = "CO2 Emissions per Kg Consumption By Food Category")
+```
+
+<br>
+
+This graph gives us an idea of the breakdown of the amount of emission per KG of food consumed, broken down by category. 
+
+Based on this graph, 'Lamb & Goat' & 'Beef' are the two broad categories that produce the maximum amount of CO2 Emissions per KG consumed. 
+
+<br>
+
+### Comparing Emission On A Country Level
+
+<br>
+
+Let us visualize the CO2 Emissions from a global perspective. 
+
+
+```{r}
+# Load world map data
+world <- ne_countries(scale = "medium", returnclass = "sf")
+
+#Segregating data for country sepcific values
+country_wise <- foodconsumption %>% 
+  group_by(country) %>%
+  summarise(co2_emmission = sum(co2_emmission)) %>% 
+  select(country, co2_emmission) 
+names(country_wise) <- c("Country", "Emissions") #Changing coloumns names to merge with World
+
+# Merge emissions data with world map data
+world <- merge(world, country_wise, by.x = "admin", by.y = "Country", all.x = TRUE)
+
+# Plot heatmap on world map
+ggplot() +
+  geom_sf(data = world, aes(fill = Emissions)) +
+  scale_fill_gradient(low = "lightblue", high = "darkred", name = "CO2 Emissions") +
+  labs(title = "CO2 Emissions by Country") +
+  theme_void()
+```
+
+<br>
+
+This gives us a good perspective of the scale of emissions from across the globe. We can see that the level of emissions are higher from historically meat eating countries. But this map does not provide an intuitive approach to understanding total emissions. 
+
+For the purpose of this project, the data has been represented on a globe as well. This will allow for better navigation.
+
+<br>
+
+```{r}
+# Using a globe
+world_map <- plot_geo(data = country_wise) %>%
+  add_trace(
+    type = "choropleth",
+    locations = ~Country,
+    z = ~Emissions,
+    colorscale = "Greens",
+    locationmode = "country names"
+  )
+
+world_map <- layout(world_map, title = "CO2 Emissions Heatmap by Country", showlegend = FALSE)
+# Show the plot
+world_map
+```
+
+<br>
+
+The globe is a representation of the total CO2 Emissions by each country. The "Greener" the country, the lesser are the CO2 Emissions. 
+
+Let us see the top 5 consuming countries grouped for different food categories. 
+
+```{r}
+#Top 5 consuming countries of each food category
+foodconsumption %>% 
+  group_by(food_category) %>% 
+  top_n(consumption, n = 5) %>% 
+  arrange(food_category, -consumption) %>% 
+  select(-consumption, -co2_emmission)
+```
+
+<br>
+
+The list of top 5 countries would not be the best representation for this brief analysis. Let us compare the top consumer country from each food category. 
+
+<br>
+
+```{r}
+#The top consuming country for each category
+top_consumer <- foodconsumption %>% 
+  group_by(food_category) %>% 
+  top_n(consumption, n = 1) %>% 
+  arrange(food_category, -consumption) %>% 
+  select(-consumption, -co2_emmission)
+table <- kable(top_consumer, format = "markdown", col.names = c("Country", "Food Category"), caption = "Top Consumer Across Food Categories")
+print(table)
+```
+
+<br>
+
+This list gives us a perspective of the top consumed food and this also has corroborates the global heatmap, eg: Argentina being the biggest consumer of beef has one of the highest CO2 emissions.
+
+Let us get a better perspective of the overall CO2 Emissions and Food consumption habits of various countries.
+
+For this purpose, we will see the countries that appear more than once in the Top 5 list. 
+
+```{r}
+#Coutries that appear more than once in the top 5 consumers by food category
+top5_multi <- foodconsumption %>% 
+  group_by(food_category) %>% 
+  top_n(consumption, n = 5) %>% 
+  arrange(food_category, -consumption) %>% 
+  ungroup() %>% 
+  count(country, sort = TRUE) %>% 
+  filter(n != 1)
+table2 <- kable(top5_multi, format = "markdown", col.names = c("Country", "Number Of Appearances"), caption = "Countries With More Than 1 Appearance In Top 5")
+print(table2)
+```
+
+Most of the countries from this list are situated in the Asia and Middle East region. This can be attributed to the concentration of population that has both Vegeterian and Non-Vegeterian Dietary habits. 
+
+There is a significant cultural aespect involved in the Food Consumption habits and further analysis can be done based on the habits of the population. 
+
+We can do a cursory comparison of **"Animal Based"** and **"Non-Animal Based"** food products based on the given categories. 
+
+<br>
+
+### Comparison Based On Animal-Based Food Categories
+
+<br>
+
+The following table shows us the breakdown of the top food categories by total consumption. The table also includes whether the food category is animal based or not. 
+
+<br>
+```{r}
+#Comparing the consumption by food type - 2 primary categories (vegan vs non-vegan)
+vegan_food <- foodconsumption %>% 
+  #Classifying the food categories into vegan and non-vegan
+  mutate(vegan = if_else(food_category %in% c("Wheat and Wheat Products", "Rice", "Soybeans", "Nuts inc. Peanut Butter"), "Non-Animal Product", "Animal Product")) %>%
+  group_by(country) %>% 
+  top_n(consumption, n = 1) %>% 
+  group_by(food_category) %>% 
+  count(vegan, sort = TRUE) %>% 
+  select(-n)
+table3 <- kable(vegan_food, format = "markdown", col.names = c("Food Category", "Vegan/Non-Vegan"), caption = "Top Food Categories By Consumption")
+print(table3)
+```
+<br>
+
+The Top two highest categories by consumption are generally included in the staple diets across geographies. Especially in Asia and the Middle East. 
+This corroborates our initial result of top consuming country by food category.
+
+Let us further compare the food categories by emission and whether they are animal based. 
+
+<br>
+
+```{R}
+#Comparing the emissions by food type - 2 primary categories (vegan vs non-vegan)
+vegan_food_em <- foodconsumption %>% 
+  #Classifying the food categories into vegan and non-vegan
+  mutate(vegan = if_else(food_category %in% c("Wheat and Wheat Products", "Rice", "Soybeans", "Nuts inc. Peanut Butter"), "Non-Animal Product", "Animal Product")) %>%
+  group_by(country) %>% 
+  top_n(co2_emmission, n = 1) %>% 
+  group_by(food_category) %>% 
+  count(vegan, sort = TRUE) %>% 
+  select(-n)
+table4 <- kable(vegan_food_em, format = "markdown", col.names = c("Food Category", "Vegan/Non-Vegan"), caption = "Top Food Categories By Emission")
+print(table4)
+```
+<br>
+
+The same result was previouly obtained when reviewing the descriptive statistics.
+
+Let us compare the above two tables graphically.
+
+<br>
+
+```{r}
+#Graphically comparing the consumptions and emissions by vegan vs non-vegan
+foodconsumption %>% 
+  mutate(vegan = if_else(food_category %in% c("Wheat and Wheat Products", "Rice", "Soybeans", "Nuts inc. Peanut Butter"), "Non-Animal Product", "Animal Product")) %>%
+  gather(key = "feature", value = "value", -country, -food_category, -vegan) %>% 
+  select(-country) %>% 
+  ggplot(aes(x = value, fill = vegan)) + 
+  geom_density(alpha = .3) + 
+  scale_x_log10() + 
+  facet_wrap(~feature, scale = "free", nrow = 2) +
+  labs(x = NULL, # Remove X Axis labels
+       y = NULL,
+       title = "Food Consumption and CO2 Emission (Animal and Non-Animal Products)")
+```
+
+<br>
+
+Based on this graph we can see that Non Animal products have a higher consumption, but the emissions peak comparatively earlier than Animal Products.
+
+The consumption of Animal Products is not as consistent, but the emissions are consistent with the rate of consumption.
+
+<br>
+
+### Conclusion
+
+In conclusion, this script sheds light on the intricate relationship between food consumption patterns and CO2 emissions. As evident from the analysis, food consumption habits impact environmental sustainability, with certain food categories contributing more to CO2 emissions than others. 
+
+The comparison of emissions per unit of consumption reveals that animal-based food products, such as beef and lamb, tend to have higher emissions compared to non-animal-based products. 
+
+Additionally, the visualization of CO2 emissions on a global scale highlights the geographical distribution of emissions, with countries known for meat consumption showing higher emissions levels.
+
+Moreover, the examination of top-consuming countries and food categories provides insights into dietary preferences and their environmental implications. 
+
+Furthermore, the comparison between animal and non-animal-based products underscores the need for sustainable food production practices and dietary shifts towards plant-based alternatives to reduce emissions.
+
+Overall, this analysis highlights the role of food consumption in driving CO2 emissions. It can act as a basis for further study to emphasizes the urgency of adopting sustainable dietary patterns to mitigate climate change.
+
+---
+
+##### Note
+
+This is a cursory analysis and should be used as a basis for further study.
