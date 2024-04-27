@@ -1,7 +1,7 @@
 # This is a script to analyse CO2 Emissions from Food consumption across coutries
 
 # Checking and installing required packages
-packages <- c('readr', 'tidyverse', 'ggplot2', 'ggtext', 'tidytext', 'ggthemes', 'broom', 'knitr')
+packages <- c('readr', 'tidyverse', 'ggplot2', 'ggtext', 'tidytext', 'ggthemes', 'broom', 'knitr', 'plotly', 'sf', "rnaturalearthdata", 'rnaturalearth')
 #install all packages that are not already installed
 install.packages(setdiff(packages, rownames(installed.packages())))
 
@@ -81,6 +81,42 @@ foodconsumption %>%
 #Based on this graph, Lamb & Goat and Beef should be avoided
 
 #Comparing the emissions on a country level
+
+# Load world map data
+world <- ne_countries(scale = "medium", returnclass = "sf")
+
+#Segregating data for country sepcific values
+country_wise <- foodconsumption %>% 
+  group_by(country) %>%
+  summarise(co2_emmission = sum(co2_emmission)) %>% 
+  select(country, co2_emmission) 
+names(country_wise) <- c("Country", "Emissions") #Changing coloumns names to merge with World
+
+# Merge emissions data with world map data
+world <- merge(world, country_wise, by.x = "admin", by.y = "Country", all.x = TRUE)
+
+# Plot heatmap on world map
+ggplot() +
+  geom_sf(data = world, aes(fill = Emissions)) +
+  scale_fill_gradient(low = "lightblue", high = "darkred", name = "CO2 Emissions") +
+  labs(title = "CO2 Emissions by Country") +
+  theme_void()
+
+# Using a globe
+world_map <- plot_geo(data = country_wise) %>%
+  add_trace(
+    type = "choropleth",
+    locations = ~Country,
+    z = ~Emissions,
+    colorscale = "Greens",
+    locationmode = "country names"
+  )
+
+world_map <- layout(world_map, title = "CO2 Emissions Heatmap by Country", showlegend = FALSE)
+# Show the plot
+world_map
+
+
 #Top 5 consuming countries of each food category
 foodconsumption %>% 
   group_by(food_category) %>% 
@@ -109,22 +145,28 @@ table2 <- kable(top5_multi, format = "markdown", col.names = c("Country", "Numbe
 print(table2)
 
 #Comparing the consumption by food type - 2 primary categories (vegan vs non-vegan)
-foodconsumption %>% 
+vegan_food <- foodconsumption %>% 
   #Classifying the food categories into vegan and non-vegan
   mutate(vegan = if_else(food_category %in% c("Wheat and Wheat Products", "Rice", "Soybeans", "Nuts inc. Peanut Butter"), "Non-Animal Product", "Animal Product")) %>%
   group_by(country) %>% 
   top_n(consumption, n = 1) %>% 
   group_by(food_category) %>% 
-  count(vegan, sort = TRUE)
+  count(vegan, sort = TRUE) %>% 
+  select(-n)
+table3 <- kable(vegan_food, format = "markdown", col.names = c("Food Category", "Vegan/Non-Vegan"), caption = "Top Food Categories By Consumption")
+print(table3)
 
 #Comparing the emissions by food type - 2 primary categories (vegan vs non-vegan)
-foodconsumption %>% 
+vegan_food_em <- foodconsumption %>% 
   #Classifying the food categories into vegan and non-vegan
   mutate(vegan = if_else(food_category %in% c("Wheat and Wheat Products", "Rice", "Soybeans", "Nuts inc. Peanut Butter"), "Non-Animal Product", "Animal Product")) %>%
   group_by(country) %>% 
   top_n(co2_emmission, n = 1) %>% 
   group_by(food_category) %>% 
-  count(vegan, sort = TRUE)
+  count(vegan, sort = TRUE) %>% 
+  select(-n)
+table4 <- kable(vegan_food_em, format = "markdown", col.names = c("Food Category", "Vegan/Non-Vegan"), caption = "Top Food Categories By Emission")
+print(table4)
 
 #Graphically comparing the consumptions and emissions by vegan vs non-vegan
 foodconsumption %>% 
