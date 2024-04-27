@@ -16,6 +16,10 @@ The required packages are:
 - `ggthemes`
 - `broom`
 - `knitr`
+- `plotly`
+- `sf`
+- `rnaturalearthdata`
+- `rnaturalearth`
 
 The script automatically installs the required packages and loads them.
 
